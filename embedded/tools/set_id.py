@@ -42,7 +42,7 @@ def send_byte_sequence(ser, seq):
 	checksum = (~sum(sendbuf) + 1) % 256
 	sendbuf.append(checksum)
 	assert(sum(sendbuf) % 256 == 0)
-	ser.write("".join(chr(e) for e in sendbuf))
+	ser.write(sendbuf)
 
 
 def ping(ser, board_id):
