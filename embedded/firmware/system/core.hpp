@@ -10,9 +10,13 @@
 #define SUPREME_SENSORIMOTOR_CORE_HPP
 
 #include <system/adc.hpp>
+#include <system/controller/pid_control.hpp>
 #include <common/temperature.hpp>
 
 namespace supreme {
+
+inline float uint16_to_sc(uint16_t word) { return (word - 32768) / 32768.f; }
+inline float  int16_to_sc(uint16_t word) { return (int16_t) word / 32768.f; }
 
 namespace defaults {
 	const uint8_t pwm_limit = 32; /* 12,5% duty cycle */
@@ -101,6 +105,7 @@ class sensorimotor_core {
 
 	Sensors          sensors;
 	MotorDriverType  motor;
+	pid_control      pos_ctrl;
 
 	uint8_t          watchcat = 0;
 	uint8_t          max_pwm = defaults::pwm_limit;
@@ -112,9 +117,15 @@ public:
 	, target()
 	, sensors()
 	, motor()
+	, pos_ctrl(0.001f) /* 1kHz loop yields dt=1ms */ // TODO: use systemClock to compute dt? (don't hardcode it here)
 	{
 		motor.disable();
 		motor.set_pwm(0);
+
+		float voltage_limit = 0.25f;
+		pos_ctrl.set_limit(voltage_limit);
+		uint8_t lim_pwm = static_cast<uint8_t>(round(std::abs(voltage_limit) * 255));
+		set_pwm_limit(lim_pwm);
 	}
 
 	void apply_target_values(void) {
@@ -132,17 +143,32 @@ public:
 	void init_sensors(void) { sensors.init(); }
 
 	void step(void) {
-		apply_target_values();
 		sensors.step();
 
+		Board::led::yellow::set();
+
+		// uint16_to_sc(com.get_word()) * direction * scalefactor + offset (sensorimotor.hpp:295)
+		float current_value = uint16_to_sc(sensors.position);
+		float target_voltage = pos_ctrl.step(current_value);
+		uint8_t pwm = static_cast<uint8_t>(round(std::abs(target_voltage) * 255));
+
+		target.pwm = pwm;
+		target.dir = (target_voltage >= 0.0) ? 0 : 1; // TODO: verify I'm not switching directions here
+		apply_target_values();
+		
+		Board::led::yellow::reset();
+
 		/* safety switchoff */
-		if (watchcat < 100) watchcat++;
-		else enabled = false;
+		// if (watchcat < 100) watchcat++;
+		// else enabled = false;
 	}
 
 	void set_pwm_limit (uint8_t lim) { max_pwm = lim; }
 	void set_target_pwm(uint8_t pwm) { target.pwm = pwm < max_pwm ? pwm : max_pwm; }
 	void set_target_dir(bool    dir) { target.dir = dir; }
+	void set_target_value(uint8_t val) {
+		pos_ctrl.set_target_value(val == 0 ? 0.2f : -0.2f); // FIXME: int to float
+	}
 
 	void enable()  { enabled = true; watchcat = 0; }
 	void disable() { enabled = false; }

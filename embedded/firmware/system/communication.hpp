@@ -50,6 +50,7 @@ public:
 		set_pwm_limit,   /* no response */
 		ext_sensor_request,
 		ext_sensor_request_resp,
+		set_target_value,
 	};
 
 	enum command_state_t {
@@ -78,6 +79,7 @@ private:
 	bool                         target_dir = false;
 	uint8_t                      target_pwm = 0;
 	uint8_t                      target_pwm_max = 0;
+	uint8_t                      target_value = 0;
 
 	/* TODO struct? */
 	command_id_t                 cmd_id    = no_command;
@@ -143,6 +145,7 @@ public:
 				return (motor_id == recv_buffer) ? verifying : eating;
 
 			/* multi-byte commands */
+			case set_target_value:
 			case set_voltage:
 			case set_id:
 			case set_pwm_limit:
@@ -190,6 +193,11 @@ public:
 				ux.set_target_dir(target_dir);
 				ux.enable();
 				prepare_data_response();
+				break;
+			
+			case set_target_value:
+				ux.set_target_value(target_value);
+				ux.enable();
 				break;
 
 			case toggle_led: //TODO: apply pwm to LED
@@ -251,6 +259,10 @@ public:
 				target_pwm = recv_buffer;
 				return verifying;
 
+			case set_target_value:
+				target_value = recv_buffer;
+				return verifying;
+
 			case set_id:
 				if (recv_buffer < 128) {
 					target_id = recv_buffer;
@@ -285,6 +297,7 @@ public:
 				assert(num_bytes_eaten == 1, 77);
 				return finished;
 
+			case set_target_value:
 			case set_voltage:
 			case set_id:
 			case set_pwm_limit:
@@ -336,6 +349,7 @@ public:
 			case 0xB0: /* 1011.0000 */ //fall through
 			case 0xB1: /* 1011.0001 */ cmd_id = set_voltage;
 			                           target_dir = recv_buffer & 0x1;   break;
+			case 0xB2: /* 1011.0010 */ cmd_id = set_target_value;        break;
 			case 0xE0: /* 1110.0000 */ cmd_id = ping;                    break;
 			case 0xA0: /* 1010.0000 */ cmd_id = set_pwm_limit;           break;
 			case 0x70: /* 0111.0000 */ cmd_id = set_id;                  break;
